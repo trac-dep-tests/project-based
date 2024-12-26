@@ -106,9 +106,9 @@ body:
   validations:
     required: true
 - type: checkboxes
-  id: easy-pickings
+  id: good-first-issue
   attributes:
-    label: Easy Pickings
+    label: Good First Issue
     options:
-    - label: Easy Pickings
+    - label: Good First Issues
       required: false
