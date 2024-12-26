@@ -1,0 +1,169 @@
+name: Label Bot
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  process-label-commands:
+    runs-on: ubuntu-latest
+    if: |
+      startsWith(github.event.comment.body, '/label') ||
+      startsWith(github.event.comment.body, '/remove-label') ||
+      startsWith(github.event.comment.body, '/labels')
+    permissions:
+      issues: write
+
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const LABEL_COMMANDS = {
+              '/label': 'add',
+              '/remove-label': 'remove',
+              '/labels': 'list'
+            };
+
+            async function getValidLabels(github, context) {
+              try {
+                const labels = await github.paginate(github.rest.issues.listLabelsForRepo, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  per_page: 100
+                });
+
+                return labels.map(label => ({
+                  name: label.name,
+                  description: label.description,
+                  color: label.color
+                }));
+              } catch (error) {
+                console.error('Error fetching labels:', error);
+                return [];
+              }
+            }
+
+            async function deleteComment(github, context, commentId) {
+              try {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: commentId
+                });
+              } catch (error) {
+                console.error('Error deleting comment:', error);
+              }
+            }
+
+            async function createTempComment(github, context, issueNumber, body) {
+              const comment = await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: body
+              });
+
+              // Schedule comment deletion after 15 seconds
+              setTimeout(async () => {
+                await deleteComment(github, context, comment.data.id);
+              }, 15000);
+
+              return comment;
+            }
+
+            async function processLabelCommand(context, github) {
+              const comment = context.payload.comment;
+              const issueNumber = context.payload.issue.number;
+
+              // Delete the command comment
+              await deleteComment(github, context, comment.id);
+
+              // Get all valid labels for the repository
+              const validLabels = await getValidLabels(github, context);
+              const validLabelNames = validLabels.map(label => label.name.toLowerCase());
+
+              // Split comment into lines and process each line
+              const lines = comment.body.split('\n');
+
+              for (const line of lines) {
+                const words = line.trim().split(/\s+/);
+                const command = words[0].toLowerCase();
+
+                if (!LABEL_COMMANDS[command]) {
+                  continue;
+                }
+
+                const action = LABEL_COMMANDS[command];
+
+                if (action === 'list') {
+                  const labelList = validLabels.map(label => {
+                    const description = label.description ? ` - ${label.description}` : '';
+                    return `- \`${label.name}\` (#${label.color})${description}`;
+                  }).join('\n');
+
+                  await createTempComment(github, context, issueNumber,
+                    `Available labels:\n\n${labelList}\n\nUse \`/label label-name\` to add a label or \`/remove-label label-name\` to remove one.`
+                  );
+                  continue;
+                }
+
+                const requestedLabel = words.slice(1).join(' ').toLowerCase();
+
+                if (!requestedLabel) {
+                  await createTempComment(github, context, issueNumber,
+                    `Please specify a label. Use \`/labels\` to see available labels.`
+                  );
+                  continue;
+                }
+
+                const exactLabel = validLabels.find(label =>
+                  label.name.toLowerCase() === requestedLabel
+                );
+
+                if (!exactLabel) {
+                  const similarLabels = validLabels.filter(label =>
+                    label.name.toLowerCase().includes(requestedLabel) ||
+                    requestedLabel.includes(label.name.toLowerCase())
+                  ).map(label => `\`${label.name}\``);
+
+                  let errorMessage = `Invalid label: "${requestedLabel}". Use \`/labels\` to see available labels.`;
+                  if (similarLabels.length > 0) {
+                    errorMessage += `\n\nDid you mean one of these?\n${similarLabels.join(', ')}`;
+                  }
+
+                  await createTempComment(github, context, issueNumber, errorMessage);
+                  continue;
+                }
+
+                try {
+                  if (action === 'add') {
+                    await github.rest.issues.addLabels({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: issueNumber,
+                      labels: [exactLabel.name]
+                    });
+
+                    await createTempComment(github, context, issueNumber,
+                      `Added label: ${exactLabel.name}`
+                    );
+                  } else if (action === 'remove') {
+                    await github.rest.issues.removeLabel({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: issueNumber,
+                      name: exactLabel.name
+                    });
+
+                    await createTempComment(github, context, issueNumber,
+                      `Removed label: ${exactLabel.name}`
+                    );
+                  }
+                } catch (error) {
+                  await createTempComment(github, context, issueNumber,
+                    `Error processing label command: ${error.message}`
+                  );
+                }
+              }
+            }
+
+            await processLabelCommand(context, github);

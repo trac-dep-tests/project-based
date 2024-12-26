@@ -1,0 +1,74 @@
+name: Sync Issue Templates
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/ISSUE_TEMPLATE/base.yml'
+
+jobs:
+  sync-templates:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.SYNC_TOKEN }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install PyYAML
+
+      - name: Sync Templates
+        run: |
+          python3 - <<EOF
+          import yaml
+          import os
+
+          # Read base template
+          with open('.github/ISSUE_TEMPLATE/base.yml', 'r') as f:
+              base = yaml.safe_load(f)
+
+          # Template configurations
+          templates = {
+              'bug': {
+                  'name': 'Bug Report',
+                  'description': 'Report a bug',
+                  'type': 'bug'
+              },
+              'feature': {
+                  'name': 'Feature Request',
+                  'description': 'Propose a new feature'
+              },
+              'cleanup': {
+                  'name': 'Cleanup / Optimization',
+                  'description': 'Suggest a cleanup or optimization'
+              }
+          }
+
+          # Generate each template
+          for template_name, config in templates.items():
+              output = config.copy()
+              output['body'] = base['body']
+
+              with open(f'.github/ISSUE_TEMPLATE/{template_name}.yml', 'w') as f:
+                  yaml.dump(output, f, sort_keys=False, allow_unicode=True)
+          EOF
+
+      - name: Commit changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .github/ISSUE_TEMPLATE/*.yml
+          git diff --quiet && git diff --staged --quiet || git commit -m "chore: sync issue templates from base template"
+
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.SYNC_TOKEN }}
+          branch: ${{ github.ref }}

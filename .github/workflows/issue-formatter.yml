@@ -1,0 +1,35 @@
+name: Issue Formatter
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  format-issue:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            async function formatIssueBody() {
+              const issue = context.payload.issue;
+              const body = issue.body;
+
+              // Extract just the description
+              const descriptionMatch = body.match(/### Description\s*\n\n(.+?)(?=\n\n###|$)/s);
+              if (!descriptionMatch) return;
+
+              const description = descriptionMatch[1].trim();
+
+              // Update the issue with just the description
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: description
+              });
+            }
+
+            await formatIssueBody();
