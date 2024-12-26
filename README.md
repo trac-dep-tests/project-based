@@ -34,14 +34,26 @@ The GHA that updates assignment cleans up after itself to keep the comment histo
 
 There are 3 label commands
 
-- `/label` - adding a comment of `/label bug` will add the label of `bug`
-- `/remove-label` - adding a comment of `/remove-label bug` will remove the
+- `/label` - adding a comment of `/label component:admin` will add the label of `bug`
+- `/remove-label` - adding a comment of `/remove-label component:admin` will remove the
 label of `bug`
 - `/labels` 0 adding a comment of `/labels` will list all available labels
 
 The GHA that updates labels cleans up after itself to keep the comment history clean
 
-### Known Issues
+## Project Board
+
+The [project board](https://github.com/orgs/trac-dep-tests/projects/1) has several views for various purposes
+
+- Needs triage: issues which have no status (Accepted, Someday/maybe, Ready for Checkin, Merged)
+- Neews review: issues which have one of the following labels: needs better patch, needs tests, needs docs
+- Open tickets: all open issues
+- Owned by me: issues assigned to you (the currently logged in user)
+- Easier tickets: issues labeled with 'Good first issue'
+- Docs needing patch: 
+- Ready to Merge: issues that have been completed and are ready to be merged
+
+### Known Limitations
 
 1. Currently you can only add or remove one label at a time
 2. You have to refresh the page to get the Labels to update. There is a bot message indicating the labels have been
