@@ -1,5 +1,6 @@
 name: Cleanup / Optimization
 description: Suggest a cleanup or optimization
+type: cleanup
 body:
 - type: markdown
   attributes:
