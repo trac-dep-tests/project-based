@@ -110,5 +110,5 @@ body:
   attributes:
     label: Good First Issue
     options:
-    - label: Good First Issues
+    - label: Good First Issue
       required: false
