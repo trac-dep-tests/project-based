@@ -15,7 +15,7 @@ jobs:
           script: |
             async function labelIssue() {
               const issue = context.payload.issue;
-              const labels = ['needs triage'];
+              const labels = [];
 
               // Parse the issue body to get form values
               const body = issue.body;
