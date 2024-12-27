@@ -1,0 +1,99 @@
+name: Duplicate Issue Checker
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  check-duplicate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for duplicate issues
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const newIssue = context.payload.issue;
+            
+            // Function to get similarity score between two strings
+            function getSimilarity(str1, str2) {
+              const s1 = str1.toLowerCase();
+              const s2 = str2.toLowerCase();
+              
+              // Convert strings to word sets
+              const words1 = new Set(s1.split(/\s+/));
+              const words2 = new Set(s2.split(/\s+/));
+              
+              // Calculate intersection and union
+              const intersection = new Set([...words1].filter(word => words2.has(word)));
+              const union = new Set([...words1, ...words2]);
+              
+              // Calculate Jaccard similarity
+              return intersection.size / union.size;
+            }
+            
+            // Function to check if issues are similar
+            function areSimilar(issue1, issue2, threshold = 0.6) {
+              const titleSimilarity = getSimilarity(issue1.title, issue2.title);
+              const bodySimilarity = getSimilarity(
+                issue1.body || '',
+                issue2.body || ''
+              );
+              
+              // Weight title similarity more heavily than body similarity
+              const overallSimilarity = (titleSimilarity * 0.7) + (bodySimilarity * 0.3);
+              return overallSimilarity >= threshold;
+            }
+            
+            // Get all issues (both open and closed)
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'all',
+              per_page: 100
+            });
+            
+            // Filter out pull requests and the current issue
+            const existingIssues = issues.filter(issue => 
+              !issue.pull_request && 
+              issue.number !== newIssue.number
+            );
+            
+            // Find potential duplicates
+            const duplicates = existingIssues.filter(issue => 
+              areSimilar(newIssue, issue)
+            );
+            
+            if (duplicates.length > 0) {
+              // Sort duplicates by similarity score to show most similar first
+              duplicates.sort((a, b) => {
+                const scoreA = areSimilar(newIssue, a);
+                const scoreB = areSimilar(newIssue, b);
+                return scoreB - scoreA;
+              });
+              
+              // Create comment body with references to duplicate issues
+              const duplicateLinks = duplicates
+                .slice(0, 5) // Limit to top 5 most similar issues
+                .map(issue => `- #${issue.number}: ${issue.title}`)
+                .join('\n');
+                
+              const commentBody = `This issue appears to be similar to the following existing issues:\n\n${duplicateLinks}\n\nPlease check if your issue is already being tracked in one of these discussions.`;
+              
+              // Add duplicate label
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: newIssue.number,
+                labels: ['duplicate']
+              });
+              
+              // Add comment with references
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: newIssue.number,
+                body: commentBody
+              });
+            }
